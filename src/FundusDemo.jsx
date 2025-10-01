@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import * as ort from "onnxruntime-web";
 ort.env.wasm.wasmPaths = "/public/dist/";
 
-const MODEL_URL = "/student_model_fp16.onnx";
+const MODEL_URL = "/student_model.onnx";
 const CLASSES = ["Normal", "Glaucoma", "Myopia", "Diabetes"];
 
 export default function FundusDemo() {
