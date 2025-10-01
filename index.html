@@ -1,26 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>FP16 ONNX Inference Demo</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <h1>FP16 ONNX Image Classification Demo</h1>
-
-  <div id="image-container">
-    <img id="selected-image" src="" width="224" height="224" alt="Select an image">
-  </div>
-
-  <div>
-    <button id="pick-image">Pick Random Image</button>
-    <button id="run-inference">Run Inference</button>
-  </div>
-
-  <p id="prediction-output">Prediction: -</p>
-  <p id="inference-time">Inference Time: -</p>
-
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-  <script src="main.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fundus Classification Demo</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
 </html>
