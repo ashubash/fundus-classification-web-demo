@@ -1,0 +1,20 @@
+import onnx
+
+def fp16_to_fp32(model):
+    for tensor in model.graph.initializer:
+        if tensor.data_type == onnx.TensorProto.FLOAT16:
+            # Convert the raw FP16 data to FP32
+            import numpy as np
+            fp16_array = np.frombuffer(tensor.raw_data, dtype=np.float16)
+            fp32_array = fp16_array.astype(np.float32)
+            tensor.raw_data = fp32_array.tobytes()
+            tensor.data_type = onnx.TensorProto.FLOAT
+    for value_info in list(model.graph.input) + list(model.graph.output) + list(model.graph.value_info):
+        t = value_info.type.tensor_type
+        if t.elem_type == onnx.TensorProto.FLOAT16:
+            t.elem_type = onnx.TensorProto.FLOAT
+    return model
+
+model = onnx.load("student_model.onnx")
+model = fp16_to_fp32(model)
+onnx.save(model, "student_model_float.onnx")
