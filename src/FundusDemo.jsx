@@ -64,7 +64,7 @@ export default function FundusDemo() {
       floatData[i + 2 * 224 * 224] = (data[i * 4 + 2] / 255 - 0.406) / 0.225; // B
     }
 
-    return new ort.Tensor("float16", floatData, [1, 3, 224, 224]);
+    return new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
   };
 
   // Run inference
