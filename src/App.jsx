@@ -1,9 +1,12 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import FundusDemo from "./FundusDemo";
+import FundusDemo from './FundusDemo';
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <FundusDemo />
-  </React.StrictMode>
-);
+function App() {
+  return (
+    <div>
+      <h1>Fundus Classification Demo</h1>
+      <FundusDemo />
+    </div>
+  );
+}
+
+export default App;
