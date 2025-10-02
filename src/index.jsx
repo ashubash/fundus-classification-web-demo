@@ -3,7 +3,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import './index.css';
+import './style.css';
 
 // --- ADD THIS CODE ---
 // Register the service worker for model caching
