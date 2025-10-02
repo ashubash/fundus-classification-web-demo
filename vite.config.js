@@ -1,3 +1,4 @@
+// vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import compression from 'vite-plugin-compression';
@@ -5,29 +6,29 @@ import compression from 'vite-plugin-compression';
 export default defineConfig({
   plugins: [
     react(),
-    // Generate .br files during build
     compression({
       algorithm: 'brotliCompress',
       ext: '.br',
       threshold: 1024,
       deleteOriginFile: false,
-      compressionOptions: { level: 11 }
-    })
+      compressionOptions: { level: 11 },
+    }),
   ],
   build: {
     rollupOptions: {
-      input: 'public/index.html',
       output: {
-        manualChunks: {
-          'onnxruntime': ['onnxruntime-web']
-        }
-      }
-    }
+        manualChunks(id) {
+          if (id.includes('onnxruntime-web')) {
+            return 'onnxruntime-web';
+          }
+        },
+      },
+    },
   },
   server: {
     headers: {
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Opener-Policy': 'same-origin'
-    }
-  }
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+  },
 });

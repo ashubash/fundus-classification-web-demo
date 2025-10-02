@@ -1,4 +1,18 @@
-/* style.css */
+/* src/style.css */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  width: 100vw;
+  box-sizing: border-box;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
 
 body {
   font-family: Arial, sans-serif;
@@ -12,11 +26,11 @@ h1 {
   margin-bottom: 20px;
 }
 
-#root {
+/* #root {
   display: flex;
   flex-direction: column;
   align-items: center;
-}
+} */
 
 .fundus-demo {
   display: flex;
