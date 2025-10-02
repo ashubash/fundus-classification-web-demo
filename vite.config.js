@@ -16,6 +16,7 @@ export default defineConfig({
   ],
   build: {
     rollupOptions: {
+      input: 'public/index.html',
       output: {
         manualChunks: {
           'onnxruntime': ['onnxruntime-web']
