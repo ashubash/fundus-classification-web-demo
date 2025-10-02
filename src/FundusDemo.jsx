@@ -13,104 +13,40 @@ export default function FundusDemo() {
 
   const [testSplit, setTestSplit] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedPreprocPath, setSelectedPreprocPath] = useState(null);
   const [gtLabel, setGtLabel] = useState(null);
   const [predResult, setPredResult] = useState(null);
   const [inferenceTime, setInferenceTime] = useState(null);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [tensorReady, setTensorReady] = useState(false);
   const [nextReady, setNextReady] = useState(null);
 
   const cache = useRef({});
 
-  // Load test_split.json
+  // Load test_split_preproc.json
   useEffect(() => {
     async function fetchTestSplit() {
       try {
-        const res = await fetch("/test_split.json");
+        const res = await fetch("/test_split_preproc.json");
         const data = await res.json();
         setTestSplit(data);
       } catch (err) {
-        console.error("Failed to load test_split.json:", err);
+        console.error("Failed to load test_split_preproc.json:", err);
       }
     }
     fetchTestSplit();
   }, []);
 
-  // Pick a random image (prefers preloaded next if available, but doesn't show pred/time)
-  const pickRandomImage = () => {
-    const oldPath = selectedImage;
-    if (oldPath) {
-      delete cache.current[oldPath]; // Clear cache for old image
+  // Load preproc tensor from .npy path
+  const loadTensorFromNpy = async (npyPath) => {
+    try {
+      const response = await fetch(npyPath);
+      const arrayBuffer = await response.arrayBuffer();
+      const floatArray = new Float32Array(arrayBuffer);
+      return new ort.Tensor("float32", floatArray, [1, 3, 224, 224]);
+    } catch (err) {
+      console.error("Failed to load tensor from .npy:", err);
+      throw err;
     }
-
-    if (nextReady) {
-      const path = nextReady.path;
-      setSelectedImage(path);
-      setGtLabel(nextReady.gt);
-      // Tensor already cached in preloadNext
-      setPredResult(null);
-      setInferenceTime(null);
-      setImageLoaded(true);
-      setNextReady(null);
-      return;
-    }
-
-    if (!testSplit.length) return;
-    const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
-    const path = sample.full_path;
-    setSelectedImage(path);
-    setGtLabel(sample.class_label_remapped);
-    setPredResult(null);
-    setInferenceTime(null);
-    setImageLoaded(false);
-  };
-
-  // Preload tensor for next random image (excluding current) - no inference yet
-  const preloadNext = async () => {
-    if (!session || !testSplit.length || !selectedImage || nextReady) return;
-
-    let attempts = 0;
-    let newSample;
-    while (attempts < testSplit.length && (!newSample || newSample.full_path === selectedImage)) {
-      newSample = testSplit[Math.floor(Math.random() * testSplit.length)];
-      attempts++;
-    }
-    if (!newSample) return;
-
-    const newPath = newSample.full_path;
-    const newGt = newSample.class_label_remapped;
-
-    // Create hidden preload image
-    const preloadImg = new Image();
-    preloadImg.onload = async () => {
-      try {
-        const tensor = await imageToTensor(preloadImg);
-        // Cache tensor only (no pred/time)
-        cache.current[newPath] = { tensor, gt: newGt };
-        setNextReady({ path: newPath, gt: newGt });
-      } catch (err) {
-        console.error("Preload tensor failed:", err);
-      }
-    };
-    preloadImg.src = newPath;
-  };
-
-  // Convert image to tensor
-  const imageToTensor = async (imgEl) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 224;
-    canvas.height = 224;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(imgEl, 0, 0, 224, 224);
-    const { data } = ctx.getImageData(0, 0, 224, 224);
-
-    const floatData = new Float32Array(1 * 3 * 224 * 224);
-    for (let i = 0; i < 224 * 224; i++) {
-      floatData[i] = (data[i * 4] / 255 - 0.485) / 0.229; // R
-      floatData[i + 224 * 224] = (data[i * 4 + 1] / 255 - 0.456) / 0.224; // G
-      floatData[i + 2 * 224 * 224] = (data[i * 4 + 2] / 255 - 0.406) / 0.225; // B
-    }
-
-    return new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
   };
 
   // Add subtle Gaussian noise to tensor for variation on repeats
@@ -122,21 +58,80 @@ export default function FundusDemo() {
     return new ort.Tensor("float32", noisyData, tensor.dims);
   };
 
-  // Handle main image load: compute and cache tensor if not already
-  const handleImageLoad = async (e) => {
-    const path = selectedImage;
-    if (!path || cache.current[path]?.tensor) {
-      setImageLoaded(true);
+  // Pick a random image (prefers preloaded next if available, but doesn't show pred/time)
+  const pickRandomImage = () => {
+    const oldPath = selectedImage;
+    if (oldPath) {
+      delete cache.current[oldPath]; // Clear cache for old image
+    }
+
+    if (nextReady) {
+      setSelectedImage(nextReady.original_path); // Original image for display
+      setSelectedPreprocPath(nextReady.preproc_path); // Matching preproc for inference
+      setGtLabel(nextReady.gt);
+      // Tensor already cached in preloadNext
+      setPredResult(null);
+      setInferenceTime(null);
+      setTensorReady(true);
+      setNextReady(null);
       return;
     }
 
+    if (!testSplit.length) return;
+    const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
+    const originalPath = sample.original_path;
+    setSelectedImage(originalPath); // Original image for display
+    setSelectedPreprocPath(sample.preproc_path); // Matching preproc for inference
+    setGtLabel(sample.class_label_remapped);
+    setPredResult(null);
+    setInferenceTime(null);
+    setTensorReady(false);
+  };
+
+  // Load tensor for current selected image (aligns with displayed original)
+  useEffect(() => {
+    if (!selectedPreprocPath || cache.current[selectedImage]?.tensor) {
+      setTensorReady(!!cache.current[selectedImage]?.tensor);
+      return;
+    }
+
+    const loadCurrentTensor = async () => {
+      try {
+        const tensor = await loadTensorFromNpy(selectedPreprocPath);
+        cache.current[selectedImage] = { tensor, gt: gtLabel }; // Keyed by original_path
+        setTensorReady(true);
+      } catch (err) {
+        console.error("Failed to load current tensor:", err);
+        setTensorReady(false);
+      }
+    };
+
+    loadCurrentTensor();
+  }, [selectedPreprocPath]);
+
+  // Preload tensor for next random image (excluding current) - no inference yet
+  const preloadNext = async () => {
+    if (!session || !testSplit.length || !selectedImage || nextReady) return;
+
+    let attempts = 0;
+    let newSample;
+    while (attempts < testSplit.length && (!newSample || newSample.original_path === selectedImage)) {
+      newSample = testSplit[Math.floor(Math.random() * testSplit.length)];
+      attempts++;
+    }
+    if (!newSample) return;
+
+    const newOriginalPath = newSample.original_path; // For display
+    const newPreprocPath = newSample.preproc_path; // For inference
+    const newGt = newSample.class_label_remapped;
+
     try {
-      const tensor = await imageToTensor(e.target);
-      cache.current[path] = { tensor, gt: gtLabel };
-      setImageLoaded(true);
+      const tensor = await loadTensorFromNpy(newPreprocPath);
+      // Cache tensor only (no pred/time), keyed by original_path
+      cache.current[newOriginalPath] = { tensor, gt: newGt };
+      setNextReady({ original_path: newOriginalPath, preproc_path: newPreprocPath, gt: newGt });
     } catch (err) {
-      console.error("Tensor computation failed:", err);
-      setImageLoaded(true); // Still mark as loaded to avoid stuck UI
+      console.error("Preload tensor failed:", err);
     }
   };
 
@@ -158,15 +153,9 @@ export default function FundusDemo() {
   };
 
   const runInference = async () => {
-    if (!session || !selectedImage || !imageLoaded) return;
+    if (!session || !selectedImage || !tensorReady) return;
 
-    const path = selectedImage;
-    let tensor = cache.current[path]?.tensor;
-    if (!tensor) {
-      const imgEl = document.getElementById("sampleImage");
-      tensor = await imageToTensor(imgEl);
-      cache.current[path] = { tensor, gt: gtLabel };
-    }
+    const tensor = cache.current[selectedImage].tensor; // Preproc tensor matching displayed image
 
     // Add noise for variation on repeats
     const noisyTensor = addNoiseToTensor(tensor);
@@ -216,22 +205,26 @@ export default function FundusDemo() {
         Pick Random Image
       </button>
 
-      <button onClick={runInference} disabled={modelLoading || !selectedImage || !imageLoaded}>
-        {modelLoading ? "Loading Model..." : "Run Inference"}
+      <button onClick={runInference} disabled={modelLoading || !selectedImage || !tensorReady}>
+        {modelLoading ? "Loading Model..." : tensorReady ? "Run Inference" : "Loading Tensor..."}
       </button>
 
       {selectedImage && (
         <div>
-          <h3>Selected Image:</h3>
+          <h3>Selected Image (Original for Viewing):</h3>
           <img
             id="sampleImage"
-            src={selectedImage}
+            src={selectedImage} // Original image path for display
             alt="Fundus"
             width={224}
             height={224}
-            onLoad={handleImageLoad}
-            style={{ opacity: imageLoaded ? 1 : 0.5 }}
+            style={{ opacity: tensorReady ? 1 : 0.5 }} // Dim until matching tensor ready
           />
+          {selectedPreprocPath && (
+            <p style={{ fontSize: "0.8em", color: "#666" }}>
+              Inference on matching preprocessed tensor: {selectedPreprocPath}
+            </p>
+          )}
         </div>
       )}
 
