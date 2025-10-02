@@ -1,34 +1,45 @@
-import { useState, useEffect } from 'react';
+// src/hooks/useModelLoader.js
+import { useEffect, useState } from 'react';
 import * as ort from 'onnxruntime-web';
 
-
-// Optional: set WASM path if using wasm backend
-ort.env.wasm.wasmPaths = '/ort/'; 
-
-const MODEL_URL = "/models/student_model_float32.onnx";
-
-export const useModelLoader = () => {
-  const [modelSession, setModelSession] = useState(null);
-  const [isModelLoading, setIsModelLoading] = useState(true);
+export default function useModelLoader(modelUrl) {
+  const [session, setSession] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadModel = async () => {
-      setIsModelLoading(true);
-      try {
-        const session = await ort.InferenceSession.create(MODEL_URL, {
-          executionProviders: ["wasm"],
-          graphOptimizationLevel: "all",
-        });
-        setModelSession(session);
-        console.log("ONNX model loaded successfully!");
-      } catch (err) {
-        console.error("Failed to load ONNX model:", err);
-      } finally {
-        setIsModelLoading(false);
-      }
-    };
-    loadModel();
-  }, []);
+    let cancelled = false;
 
-  return { modelSession, isModelLoading };
-};
+    async function loadModel() {
+      try {
+        // Tell ORT where to find wasm + .mjs helper files
+        ort.env.wasm.wasmPaths = '/ort/';
+
+        console.log('[ORT] Loading model from', modelUrl);
+
+        const sess = await ort.InferenceSession.create(modelUrl, {
+          executionProviders: ['wasm'], // force WASM in Codespaces
+        });
+
+        if (!cancelled) {
+          console.log('[ORT] Model loaded successfully');
+          setSession(sess);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('[ORT] Failed to load model:', err);
+          setError(err);
+          setLoading(false);
+        }
+      }
+    }
+
+    loadModel();
+    return () => {
+      cancelled = true;
+    };
+  }, [modelUrl]);
+
+  return { session, error, loading };
+}

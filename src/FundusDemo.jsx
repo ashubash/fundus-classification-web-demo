@@ -1,119 +1,131 @@
-// src/FundusDemo.jsx
+// FundusDemo.jsx
 import React, { useEffect, useState } from "react";
-import { useModelLoader } from "./hooks/useModelLoader";
+import useModelLoader from "./useModelLoader"; // make sure this is fixed version
+import * as ort from "onnxruntime-web";
 
-const CLASSES = ["Normal", "Glaucoma", "Myopia", "Diabetes"];
+const CLASS_MAP = {
+  0: "Normal",
+  1: "Glaucoma",
+  2: "Myopia",
+  3: "Diabetes",
+};
 
 export default function FundusDemo() {
-  const { modelSession, isModelLoading } = useModelLoader();
+  const { session, loading, error } = useModelLoader("/models/student_model_float32.onnx");
 
-  const [testSplit, setTestSplit] = useState([]);
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [gtLabel, setGtLabel] = useState(null);
-  const [predResult, setPredResult] = useState(null);
-  const [inferenceTime, setInferenceTime] = useState(null);
+  const [testImages, setTestImages] = useState([]);
+  const [results, setResults] = useState({});
+  const [running, setRunning] = useState(false);
 
-  // Load test_split.json
+  // Load test_split.json once at mount
   useEffect(() => {
-    async function fetchTestSplit() {
-      const res = await fetch("/test_split.json");
-      const data = await res.json();
-      setTestSplit(data);
-    }
-    fetchTestSplit();
+    fetch("/test_split.json")
+      .then((res) => res.json())
+      .then((data) => setTestImages(data))
+      .catch((err) => console.error("Failed to load test_split.json", err));
   }, []);
 
-  // Pick a random image
-  const pickRandomImage = () => {
-    if (!testSplit.length) return;
-    const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
-    setSelectedImage(sample.full_path);
-    setGtLabel(parseInt(sample.class_label_remapped));
-    setPredResult(null);
-    setInferenceTime(null);
-  };
+  async function runInference() {
+    if (!session) return;
+    setRunning(true);
 
-  // Preprocess image for ONNX
-  const imageToTensor = async (imgEl) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 224;
-    canvas.height = 224;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(imgEl, 0, 0, 224, 224);
-    const { data } = ctx.getImageData(0, 0, 224, 224);
+    const newResults = {};
 
-    const floatData = new Float32Array(1 * 3 * 224 * 224);
-    for (let i = 0; i < 224 * 224; i++) {
-      floatData[i] = (data[i * 4] / 255 - 0.485) / 0.229; // R
-      floatData[i + 224 * 224] = (data[i * 4 + 1] / 255 - 0.456) / 0.224; // G
-      floatData[i + 2 * 224 * 224] = (data[i * 4 + 2] / 255 - 0.406) / 0.225; // B
+    for (let item of testImages) {
+      try {
+        // Load image into tensor
+        const img = await loadImageTensor(item.full_path);
+
+        const feeds = { input: img }; // adjust 'input' to match model input name
+        const outputData = await session.run(feeds);
+
+        // Grab first output
+        const logits = outputData[Object.keys(outputData)[0]].data;
+        const predIndex = argMax(logits);
+
+        newResults[item.full_path] = {
+          pred: predIndex,
+          predLabel: CLASS_MAP[predIndex],
+          true: item.class_label_remapped,
+          trueLabel: CLASS_MAP[item.class_label_remapped],
+        };
+      } catch (e) {
+        console.error("Inference error for", item.full_path, e);
+      }
     }
 
-    return new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
-  };
-
-  // Run inference
-  const runInference = async () => {
-    if (!modelSession || !selectedImage) return;
-
-    const imgEl = document.getElementById("sampleImage");
-    const tensor = await imageToTensor(imgEl);
-
-    const start = performance.now();
-
-    const feeds = {};
-    feeds[modelSession.inputNames[0]] = tensor;
-    const results = await modelSession.run(feeds);
-
-    const end = performance.now();
-
-    const output = results[modelSession.outputNames[0]].data;
-    const predIndex = output.indexOf(Math.max(...output));
-
-    setPredResult(predIndex);
-    setInferenceTime((end - start).toFixed(2));
-  };
+    setResults(newResults);
+    setRunning(false);
+  }
 
   return (
-    <div className="fundus-demo">
-      <h1>Fundus Classification Demo</h1>
+    <div style={{ padding: "20px" }}>
+      <h1>Fundus Disease Classifier Demo</h1>
 
-      <button onClick={pickRandomImage} disabled={isModelLoading}>
-        Pick Random Image
+      {loading && <p>Loading model...</p>}
+      {error && <p style={{ color: "red" }}>Error loading model: {error.message}</p>}
+
+      <button onClick={runInference} disabled={loading || !session || running}>
+        {running ? "Running..." : "Run Inference"}
       </button>
 
-      <button
-        onClick={runInference}
-        disabled={!selectedImage || !modelSession || isModelLoading}
-      >
-        {isModelLoading ? "Loading Model..." : "Run Inference"}
-      </button>
-
-      {selectedImage && (
-        <div>
-          <h3>Selected Image:</h3>
-          <img
-            id="sampleImage"
-            src={selectedImage}
-            alt="Fundus"
-            width={224}
-            height={224}
-          />
-        </div>
-      )}
-
-      {gtLabel !== null && (
-        <p>
-          Ground Truth: <b>{CLASSES[gtLabel]}</b>
-        </p>
-      )}
-
-      {predResult !== null && (
-        <p>
-          Prediction: <b>{CLASSES[predResult]}</b> | Inference Time:{" "}
-          {inferenceTime} ms
-        </p>
-      )}
+      <div style={{ marginTop: "20px" }}>
+        {testImages.map((item) => {
+          const res = results[item.full_path];
+          return (
+            <div key={item.full_path} style={{ marginBottom: "20px" }}>
+              <img
+                src={item.full_path}
+                alt="fundus"
+                style={{ width: "200px", display: "block" }}
+              />
+              <p>Ground Truth: {CLASS_MAP[item.class_label_remapped]}</p>
+              {res ? (
+                <p>
+                  Predicted: {res.predLabel} {res.pred === item.class_label_remapped ? "✅" : "❌"}
+                </p>
+              ) : (
+                <p>Not inferred yet</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
+}
+
+// Utility: argMax
+function argMax(arr) {
+  return arr.reduce((bestIdx, x, i, a) => (x > a[bestIdx] ? i : bestIdx), 0);
+}
+
+// Utility: loadImageTensor (basic RGB float32 resize)
+async function loadImageTensor(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = url;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      const size = 224; // adjust to your model's expected input
+      canvas.width = size;
+      canvas.height = size;
+      ctx.drawImage(img, 0, 0, size, size);
+      const imageData = ctx.getImageData(0, 0, size, size);
+      const { data } = imageData;
+
+      const floatArray = new Float32Array(size * size * 3);
+      for (let i = 0; i < size * size; i++) {
+        floatArray[i * 3 + 0] = data[i * 4 + 0] / 255.0; // R
+        floatArray[i * 3 + 1] = data[i * 4 + 1] / 255.0; // G
+        floatArray[i * 3 + 2] = data[i * 4 + 2] / 255.0; // B
+      }
+
+      const tensor = new ort.Tensor("float32", floatArray, [1, 3, size, size]);
+      resolve(tensor);
+    };
+    img.onerror = reject;
+  });
 }
