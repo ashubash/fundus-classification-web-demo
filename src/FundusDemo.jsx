@@ -1,5 +1,6 @@
 // src/FundusDemo.jsx
 import React, { useEffect, useState } from "react";
+import * as ort from "onnxruntime-web";  // Add this line
 import useModelLoader from "./hooks/useModelLoader";
 
 const CLASSES = ["Normal", "Glaucoma", "Myopia", "Diabetes"];
