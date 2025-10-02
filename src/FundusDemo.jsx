@@ -1,6 +1,6 @@
 // FundusDemo.jsx
 import React, { useEffect, useState } from "react";
-import useModelLoader from "./useModelLoader"; // make sure this is fixed version
+import useModelLoader from "./hooks/useModelLoader"; // make sure this is fixed version
 import * as ort from "onnxruntime-web";
 
 const CLASS_MAP = {
