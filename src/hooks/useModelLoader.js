@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import * as ort from 'onnxruntime-web';
 
+
 // Optional: set WASM path if using wasm backend
-ort.env.wasm.wasmPaths = "/"; 
+ort.env.wasm.wasmPaths = '/ort/'; 
 
 const MODEL_URL = "/models/student_model_float32.onnx";
 

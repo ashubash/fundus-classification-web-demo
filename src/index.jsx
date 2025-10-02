@@ -4,15 +4,15 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './style.css';
 
-// Register service worker for caching (optional)
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/service-worker.js') // ensure this file exists in public/
-      .then(reg => console.log('Service Worker registered:', reg.scope))
-      .catch(err => console.error('Service Worker registration failed:', err));
-  });
-}
+// // Register service worker for caching (optional)
+// if ('serviceWorker' in navigator) {
+//   window.addEventListener('load', () => {
+//     navigator.serviceWorker
+//       .register('/service-worker.js') // ensure this file exists in public/
+//       .then(reg => console.log('Service Worker registered:', reg.scope))
+//       .catch(err => console.error('Service Worker registration failed:', err));
+//   });
+// }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
