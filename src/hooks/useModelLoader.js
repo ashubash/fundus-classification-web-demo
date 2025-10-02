@@ -1,45 +1,49 @@
-// src/hooks/useModelLoader.js
-import { useEffect, useState } from 'react';
-import * as ort from 'onnxruntime-web';
+// useModelLoader.js
+import { useEffect, useState } from "react";
+import * as ort from "onnxruntime-web";
 
 export default function useModelLoader(modelUrl) {
   const [session, setSession] = useState(null);
-  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadModel() {
       try {
-        // Tell ORT where to find wasm + .mjs helper files
-        ort.env.wasm.wasmPaths = '/ort/';
+        setLoading(true);
+        setError(null);
 
-        console.log('[ORT] Loading model from', modelUrl);
+        // Optional: Comment these out first to see if they caused blank screen
+        // ort.env.wasm.wasmPaths = "/";
+        // await ort.env.wasm.init();
 
-        const sess = await ort.InferenceSession.create(modelUrl, {
-          executionProviders: ['wasm'], // force WASM in Codespaces
+        const s = await ort.InferenceSession.create(modelUrl, {
+          executionProviders: ["wasm"],
         });
 
         if (!cancelled) {
-          console.log('[ORT] Model loaded successfully');
-          setSession(sess);
-          setLoading(false);
+          setSession(s);
         }
-      } catch (err) {
+      } catch (e) {
+        console.error("Model loading failed:", e);
         if (!cancelled) {
-          console.error('[ORT] Failed to load model:', err);
-          setError(err);
+          setError(e);
+        }
+      } finally {
+        if (!cancelled) {
           setLoading(false);
         }
       }
     }
 
     loadModel();
+
     return () => {
       cancelled = true;
     };
   }, [modelUrl]);
 
-  return { session, error, loading };
+  return { session, loading, error };
 }
