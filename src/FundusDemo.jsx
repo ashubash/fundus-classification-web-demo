@@ -1,32 +1,18 @@
 // src/FundusDemo.jsx
 import React, { useEffect, useState } from "react";
-import * as ort from "onnxruntime-web";
-ort.env.wasm.wasmPaths = "/public/dist/";
+import { useModelLoader } from './hooks/useModelLoader'; // <-- Import the custom hook
 
-const MODEL_URL = "/student_model_float.onnx";
 const CLASSES = ["Normal", "Glaucoma", "Myopia", "Diabetes"];
 
 export default function FundusDemo() {
-  const [session, setSession] = useState(null);
+  // --- USE THE CUSTOM HOOK TO GET SESSIONS ---
+  const { backboneSession, headSession, isModelLoading } = useModelLoader();
+
   const [testSplit, setTestSplit] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
   const [gtLabel, setGtLabel] = useState(null);
   const [predResult, setPredResult] = useState(null);
   const [inferenceTime, setInferenceTime] = useState(null);
-
-  // Load ONNX model
-  useEffect(() => {
-    async function loadModel() {
-      const s = await ort.InferenceSession.create(MODEL_URL, {
-        executionProviders: ["wasm"],
-        graphOptimizationLevel: "all",
-      });
-      setSession(s);
-      console.log("ONNX FP16 model loaded!");
-    }
-
-    loadModel();
-  }, []);
 
   // Load test_split.json
   useEffect(() => {
@@ -67,20 +53,30 @@ export default function FundusDemo() {
     return new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
   };
 
-  // Run inference
+  // --- UPDATE THE INFERENCE FUNCTION ---
   const runInference = async () => {
-    if (!session || !selectedImage) return;
+    if (!backboneSession || !headSession || !selectedImage) return;
+    
     const imgEl = document.getElementById("sampleImage");
     const tensor = await imageToTensor(imgEl);
 
-    const feeds = {};
-    feeds[session.inputNames[0]] = tensor;
-
     const start = performance.now();
-    const results = await session.run(feeds);
+
+    // Step 1: Run the backbone model to get the embedding
+    const backboneFeeds = {};
+    backboneFeeds[backboneSession.inputNames[0]] = tensor;
+    const backboneResults = await backboneSession.run(backboneFeeds);
+    const embedding = backboneResults[backboneSession.outputNames[0]];
+
+    // Step 2: Run the head model with the embedding
+    const headFeeds = {};
+    headFeeds[headSession.inputNames[0]] = embedding;
+    const headResults = await headSession.run(headFeeds);
+    
     const end = performance.now();
 
-    const output = results[session.outputNames[0]].data;
+    // The output of the head is the final logits
+    const output = headResults[headSession.outputNames[0]].data;
     const predIndex = output.indexOf(Math.max(...output));
     setPredResult(predIndex);
     setInferenceTime((end - start).toFixed(2));
@@ -89,8 +85,8 @@ export default function FundusDemo() {
   return (
     <div>
       <button onClick={pickRandomImage}>Pick Random Image</button>
-      <button onClick={runInference} disabled={!selectedImage || !session}>
-        Run Inference
+      <button onClick={runInference} disabled={!selectedImage || !backboneSession || !headSession}>
+        {isModelLoading ? "Loading Models..." : "Run Inference"}
       </button>
 
       {selectedImage && (

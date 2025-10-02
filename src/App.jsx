@@ -1,10 +1,15 @@
+// src/App.jsx
+import React, { Suspense } from 'react';
 import FundusDemo from './FundusDemo';
+import LoadingSpinner from './components/LoadingSpinner'; // Optional but recommended
 
 function App() {
   return (
     <div>
       <h1>Fundus Classification Demo</h1>
-      <FundusDemo />
+      <Suspense fallback={<LoadingSpinner />}>
+        <FundusDemo />
+      </Suspense>
     </div>
   );
 }
