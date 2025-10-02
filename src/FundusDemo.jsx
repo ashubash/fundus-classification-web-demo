@@ -36,13 +36,72 @@ export default function FundusDemo() {
     fetchTestSplit();
   }, []);
 
-  // Load preproc tensor from .npy path
+  // Parse .npy file and extract raw Float32Array
+  const parseNpy = (arrayBuffer) => {
+    const view = new DataView(arrayBuffer);
+    const u8 = new Uint8Array(arrayBuffer);
+
+    // Check magic
+    if (u8[0] !== 0x93 || u8[1] !== 0x4E || u8[2] !== 0x55 || u8[3] !== 0x4D || u8[4] !== 0x50 || u8[5] !== 0x59) {
+      throw new Error('Invalid .npy magic bytes');
+    }
+
+    const major = u8[6];
+    const minor = u8[7];
+    if (major !== 1 || minor !== 0) {
+      throw new Error(`Unsupported .npy version: {major}.{minor}`);
+    }
+
+    // Header length (little-endian uint16)
+    const headerLen = view.getUint16(8, true);
+    const headerStart = 10;
+    const headerEnd = headerStart + headerLen;
+
+    if (headerEnd > arrayBuffer.byteLength) {
+      throw new Error('Header exceeds file size');
+    }
+
+    // Decode header (ensure it ends with \n)
+    const headerBytes = u8.subarray(headerStart, headerEnd);
+    if (headerBytes[headerLen - 1] !== 0x0A) {
+      throw new Error('Header does not end with newline');
+    }
+    const headerStr = new TextDecoder('utf-8').decode(headerBytes.slice(0, -1)); // Exclude \n
+
+    // Parse header for validation (optional, but good)
+    try {
+      const headerObj = JSON.parse(headerStr);
+      if (headerObj.descr !== '<f4' || headerObj.shape[0] !== 1 || headerObj.shape[1] !== 3 || headerObj.shape[2] !== 224 || headerObj.shape[3] !== 224) {
+        throw new Error('Unexpected shape or dtype in .npy header');
+      }
+    } catch (e) {
+      console.warn('Could not parse .npy header, proceeding with assumptions');
+    }
+
+    // Compute data start: preamble = 8 (magic+ver) + 2 (len) + headerLen, then pad to 64
+    let preambleLen = 10 + headerLen;
+    let pad = (64 - (preambleLen % 64)) % 64;
+    let dataStart = preambleLen + pad;
+
+    const expectedDataBytes = 1 * 3 * 224 * 224 * 4; // 602112
+    if (dataStart + expectedDataBytes > arrayBuffer.byteLength) {
+      throw new Error(`File too short for expected data (need ${expectedDataBytes}, have ${arrayBuffer.byteLength - dataStart})`);
+    }
+
+    // Extract raw data as Float32Array (little-endian assumed)
+    const data = new Float32Array(arrayBuffer, dataStart, 1 * 3 * 224 * 224);
+    return new ort.Tensor("float32", data, [1, 3, 224, 224]);
+  };
+
+  // Load preproc tensor from .npy path (now parses header)
   const loadTensorFromNpy = async (npyPath) => {
     try {
       const response = await fetch(npyPath);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       const arrayBuffer = await response.arrayBuffer();
-      const floatArray = new Float32Array(arrayBuffer);
-      return new ort.Tensor("float32", floatArray, [1, 3, 224, 224]);
+      return parseNpy(arrayBuffer);
     } catch (err) {
       console.error("Failed to load tensor from .npy:", err);
       throw err;
