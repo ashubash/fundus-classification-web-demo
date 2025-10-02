@@ -35,13 +35,20 @@ export default function FundusDemo() {
     fetchTestSplit();
   }, []);
 
-  // Pick a random image (prefers preloaded next if available)
+  // Pick a random image (prefers preloaded next if available, but doesn't show pred/time)
   const pickRandomImage = () => {
+    const oldPath = selectedImage;
+    if (oldPath) {
+      delete cache.current[oldPath]; // Clear cache for old image
+    }
+
     if (nextReady) {
-      setSelectedImage(nextReady.path);
+      const path = nextReady.path;
+      setSelectedImage(path);
       setGtLabel(nextReady.gt);
-      setPredResult(nextReady.pred);
-      setInferenceTime(nextReady.time);
+      // Tensor already cached in preloadNext
+      setPredResult(null);
+      setInferenceTime(null);
       setImageLoaded(true);
       setNextReady(null);
       return;
@@ -49,16 +56,17 @@ export default function FundusDemo() {
 
     if (!testSplit.length) return;
     const sample = testSplit[Math.floor(Math.random() * testSplit.length)];
-    setSelectedImage(sample.full_path);
+    const path = sample.full_path;
+    setSelectedImage(path);
     setGtLabel(sample.class_label_remapped);
     setPredResult(null);
     setInferenceTime(null);
     setImageLoaded(false);
   };
 
-  // Preload and infer on next random image (excluding current)
+  // Preload tensor for next random image (excluding current) - no inference yet
   const preloadNext = async () => {
-    if (!session || !testSplit.length || !selectedImage) return;
+    if (!session || !testSplit.length || !selectedImage || nextReady) return;
 
     let attempts = 0;
     let newSample;
@@ -76,46 +84,11 @@ export default function FundusDemo() {
     preloadImg.onload = async () => {
       try {
         const tensor = await imageToTensor(preloadImg);
-
-        const start = performance.now();
-        const feeds = {};
-        feeds[session.inputNames[0]] = tensor;
-
-        const results = await session.run(feeds);
-        const output = results[session.outputNames[0]].data; // raw logits
-
-        // Optimized softmax with numerical stability
-        const probs = new Float32Array(output.length);
-        let maxLogit = -Infinity;
-        for (let i = 0; i < output.length; i++) {
-          if (output[i] > maxLogit) maxLogit = output[i];
-        }
-        let sumExp = 0;
-        for (let i = 0; i < output.length; i++) {
-          sumExp += Math.exp(output[i] - maxLogit);
-        }
-        for (let i = 0; i < output.length; i++) {
-          probs[i] = Math.exp(output[i] - maxLogit) / sumExp;
-        }
-        let maxProb = 0;
-        let predIndex = 0;
-        for (let i = 0; i < probs.length; i++) {
-          if (probs[i] > maxProb) {
-            maxProb = probs[i];
-            predIndex = i;
-          }
-        }
-        const confidence = maxProb;
-
-        const end = performance.now();
-        const time = (end - start).toFixed(2);
-        const pred = { index: predIndex, confidence };
-
-        // Cache tensor for this new path (pred not cached to allow re-runs)
+        // Cache tensor only (no pred/time)
         cache.current[newPath] = { tensor, gt: newGt };
-        setNextReady({ path: newPath, pred, gt: newGt, time });
+        setNextReady({ path: newPath, gt: newGt });
       } catch (err) {
-        console.error("Preload inference failed:", err);
+        console.error("Preload tensor failed:", err);
       }
     };
     preloadImg.src = newPath;
@@ -140,6 +113,15 @@ export default function FundusDemo() {
     return new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
   };
 
+  // Add subtle Gaussian noise to tensor for variation on repeats
+  const addNoiseToTensor = (tensor, noiseStd = 0.01) => {
+    const noisyData = new Float32Array(tensor.data);
+    for (let i = 0; i < noisyData.length; i++) {
+      noisyData[i] += (Math.random() - 0.5) * 2 * noiseStd; // Uniform approx Gaussian, centered at 0
+    }
+    return new ort.Tensor("float32", noisyData, tensor.dims);
+  };
+
   // Handle main image load: compute and cache tensor if not already
   const handleImageLoad = async (e) => {
     const path = selectedImage;
@@ -158,6 +140,23 @@ export default function FundusDemo() {
     }
   };
 
+  // Compute softmax probs
+  const computeProbs = (output) => {
+    const probs = new Float32Array(output.length);
+    let maxLogit = -Infinity;
+    for (let i = 0; i < output.length; i++) {
+      if (output[i] > maxLogit) maxLogit = output[i];
+    }
+    let sumExp = 0;
+    for (let i = 0; i < output.length; i++) {
+      sumExp += Math.exp(output[i] - maxLogit);
+    }
+    for (let i = 0; i < output.length; i++) {
+      probs[i] = Math.exp(output[i] - maxLogit) / sumExp;
+    }
+    return probs;
+  };
+
   const runInference = async () => {
     if (!session || !selectedImage || !imageLoaded) return;
 
@@ -169,27 +168,20 @@ export default function FundusDemo() {
       cache.current[path] = { tensor, gt: gtLabel };
     }
 
+    // Add noise for variation on repeats
+    const noisyTensor = addNoiseToTensor(tensor);
+
     const start = performance.now();
     try {
       const feeds = {};
-      feeds[session.inputNames[0]] = tensor;
+      feeds[session.inputNames[0]] = noisyTensor;
 
       const results = await session.run(feeds);
       const output = results[session.outputNames[0]].data; // raw logits
 
-      // Optimized softmax with numerical stability
-      const probs = new Float32Array(output.length);
-      let maxLogit = -Infinity;
-      for (let i = 0; i < output.length; i++) {
-        if (output[i] > maxLogit) maxLogit = output[i];
-      }
-      let sumExp = 0;
-      for (let i = 0; i < output.length; i++) {
-        sumExp += Math.exp(output[i] - maxLogit);
-      }
-      for (let i = 0; i < output.length; i++) {
-        probs[i] = Math.exp(output[i] - maxLogit) / sumExp;
-      }
+      const probs = computeProbs(output);
+
+      // Find predicted class and confidence from current probs
       let maxProb = 0;
       let predIndex = 0;
       for (let i = 0; i < probs.length; i++) {
@@ -208,7 +200,6 @@ export default function FundusDemo() {
       setInferenceTime(time);
 
       // Always trigger preload for next after each run (even on same image)
-      // This keeps nextReady updated/fresh, but preserves it if user picks random next
       setTimeout(() => preloadNext(), 0); // Async to avoid blocking
     } catch (err) {
       console.error("Inference failed:", err);
