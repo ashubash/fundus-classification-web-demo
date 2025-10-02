@@ -6,7 +6,7 @@ import LoadingSpinner from './components/LoadingSpinner';
 function App() {
   return (
     <div>
-      <h1>Fundus Classification Demo</h1>
+      {/* Remove the h1 from here—it's already in FundusDemo */}
       <Suspense fallback={<LoadingSpinner />}>
         <FundusDemo />
       </Suspense>
