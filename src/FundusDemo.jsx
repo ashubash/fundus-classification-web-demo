@@ -1,12 +1,11 @@
 // src/FundusDemo.jsx
 import React, { useEffect, useState } from "react";
-import { useModelLoader } from './hooks/useModelLoader'; // <-- Import the custom hook
+import { useModelLoader } from "./hooks/useModelLoader";
 
 const CLASSES = ["Normal", "Glaucoma", "Myopia", "Diabetes"];
 
 export default function FundusDemo() {
-  // --- USE THE CUSTOM HOOK TO GET SESSIONS ---
-  const { backboneSession, headSession, isModelLoading } = useModelLoader();
+  const { modelSession, isModelLoading } = useModelLoader();
 
   const [testSplit, setTestSplit] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -53,46 +52,53 @@ export default function FundusDemo() {
     return new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
   };
 
-  // --- UPDATE THE INFERENCE FUNCTION ---
+  // Run inference
   const runInference = async () => {
-    if (!backboneSession || !headSession || !selectedImage) return;
-    
+    if (!modelSession || !selectedImage) return;
+
     const imgEl = document.getElementById("sampleImage");
     const tensor = await imageToTensor(imgEl);
 
     const start = performance.now();
 
-    // Step 1: Run the backbone model to get the embedding
-    const backboneFeeds = {};
-    backboneFeeds[backboneSession.inputNames[0]] = tensor;
-    const backboneResults = await backboneSession.run(backboneFeeds);
-    const embedding = backboneResults[backboneSession.outputNames[0]];
+    const feeds = {};
+    feeds[modelSession.inputNames[0]] = tensor;
+    const results = await modelSession.run(feeds);
 
-    // Step 2: Run the head model with the embedding
-    const headFeeds = {};
-    headFeeds[headSession.inputNames[0]] = embedding;
-    const headResults = await headSession.run(headFeeds);
-    
     const end = performance.now();
 
-    // The output of the head is the final logits
-    const output = headResults[headSession.outputNames[0]].data;
+    const output = results[modelSession.outputNames[0]].data;
     const predIndex = output.indexOf(Math.max(...output));
+
     setPredResult(predIndex);
     setInferenceTime((end - start).toFixed(2));
   };
 
   return (
-    <div>
-      <button onClick={pickRandomImage}>Pick Random Image</button>
-      <button onClick={runInference} disabled={!selectedImage || !backboneSession || !headSession}>
-        {isModelLoading ? "Loading Models..." : "Run Inference"}
+    <div className="fundus-demo">
+      <h1>Fundus Classification Demo</h1>
+
+      <button onClick={pickRandomImage} disabled={isModelLoading}>
+        Pick Random Image
+      </button>
+
+      <button
+        onClick={runInference}
+        disabled={!selectedImage || !modelSession || isModelLoading}
+      >
+        {isModelLoading ? "Loading Model..." : "Run Inference"}
       </button>
 
       {selectedImage && (
         <div>
           <h3>Selected Image:</h3>
-          <img id="sampleImage" src={selectedImage} alt="Fundus" width={224} height={224} />
+          <img
+            id="sampleImage"
+            src={selectedImage}
+            alt="Fundus"
+            width={224}
+            height={224}
+          />
         </div>
       )}
 
@@ -104,7 +110,8 @@ export default function FundusDemo() {
 
       {predResult !== null && (
         <p>
-          Prediction: <b>{CLASSES[predResult]}</b> | Inference Time: {inferenceTime} ms
+          Prediction: <b>{CLASSES[predResult]}</b> | Inference Time:{" "}
+          {inferenceTime} ms
         </p>
       )}
     </div>

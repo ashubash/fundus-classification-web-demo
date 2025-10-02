@@ -2,30 +2,23 @@
 
 # --- Build Configuration ---
 [build]
-  # This tells Netlify to create .br files during the build process
   command = "npm run build"
   publish = "dist"
 
-
-# --- Caching Headers for Models ---
+# --- Caching Headers for ONNX Model ---
 [[headers]]
-  # This rule applies to all .br files in your models folder
-  for = "/models/*.onnx.br"
+  for = "/models/student_model_float32.onnx"
   [headers.values]
-    # Cache for 1 year, immutable content
     Cache-Control = "public, max-age=31536000, immutable"
-    # Tell the browser the content is Brotli-compressed
-    Content-Encoding = "br"
-    # Set the correct MIME type
     Content-Type = "application/octet-stream"
 
-# --- Caching Headers for Other Static Assets ---
+# --- Caching Headers for Other Static Assets (JS, CSS, images, fonts) ---
 [[headers]]
-  for = "/_next/static/*"
+  for = "/*.{js,css,svg,png,jpg,jpeg,gif,woff,woff2,eot,ttf}"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# --- Caching Headers for API-like JSON files ---
+# --- Caching Headers for JSON files ---
 [[headers]]
   for = "/test_split.json"
   [headers.values]

@@ -1,21 +1,18 @@
-// src/main.jsx
-
+// src/index.jsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './style.css';
 
-// --- ADD THIS CODE ---
-// Register the service worker for model caching
+// Register service worker for caching (optional)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/service-worker.js')
-      .then(reg => console.log('SW registered:', reg.scope))
-      .catch(err => console.error('SW registration failed:', err));
+      .register('/service-worker.js') // ensure this file exists in public/
+      .then(reg => console.log('Service Worker registered:', reg.scope))
+      .catch(err => console.error('Service Worker registration failed:', err));
   });
 }
-// --- END OF ADDED CODE ---
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -1,7 +1,7 @@
 // src/App.jsx
 import React, { Suspense } from 'react';
 import FundusDemo from './FundusDemo';
-import LoadingSpinner from './components/LoadingSpinner'; // Optional but recommended
+import LoadingSpinner from './components/LoadingSpinner';
 
 function App() {
   return (
