@@ -59,7 +59,6 @@ export default function FundusDemo() {
   // Preload and infer on next random image (excluding current)
   const preloadNext = async () => {
     if (!session || !testSplit.length || !selectedImage) return;
-    if (nextReady) return; // Already preloading one
 
     let attempts = 0;
     let newSample;
@@ -112,7 +111,8 @@ export default function FundusDemo() {
         const time = (end - start).toFixed(2);
         const pred = { index: predIndex, confidence };
 
-        cache.current[newPath] = { tensor, pred, gt: newGt, time };
+        // Cache tensor for this new path (pred not cached to allow re-runs)
+        cache.current[newPath] = { tensor, gt: newGt };
         setNextReady({ path: newPath, pred, gt: newGt, time });
       } catch (err) {
         console.error("Preload inference failed:", err);
@@ -162,14 +162,13 @@ export default function FundusDemo() {
     if (!session || !selectedImage || !imageLoaded) return;
 
     const path = selectedImage;
-    if (cache.current[path]?.pred) {
-      const cached = cache.current[path];
-      setPredResult(cached.pred);
-      setInferenceTime(`cached (${cached.time} ms)`);
-      return; // Skip full run for optimization
+    let tensor = cache.current[path]?.tensor;
+    if (!tensor) {
+      const imgEl = document.getElementById("sampleImage");
+      tensor = await imageToTensor(imgEl);
+      cache.current[path] = { tensor, gt: gtLabel };
     }
 
-    const tensor = cache.current[path].tensor;
     const start = performance.now();
     try {
       const feeds = {};
@@ -207,10 +206,10 @@ export default function FundusDemo() {
 
       setPredResult(pred);
       setInferenceTime(time);
-      cache.current[path] = { ...cache.current[path], pred, time };
 
-      // Trigger preload for next
-      preloadNext();
+      // Always trigger preload for next after each run (even on same image)
+      // This keeps nextReady updated/fresh, but preserves it if user picks random next
+      setTimeout(() => preloadNext(), 0); // Async to avoid blocking
     } catch (err) {
       console.error("Inference failed:", err);
     }
