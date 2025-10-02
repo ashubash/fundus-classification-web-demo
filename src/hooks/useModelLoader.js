@@ -14,14 +14,14 @@ export default function useModelLoader(modelUrl) {
         setLoading(true);
         setError(null);
 
-        // Disable multi-threading to avoid loading the .jsep.mjs file
-        ort.env.wasm.numThreads = 1;
+        // Use CDN for all WASM/JS loader files (avoids local public/ imports)
+        ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/";
 
-        // Optional: Explicitly enable/disable SIMD (default is auto-detect; set false if you want to test without it)
-        // ort.env.wasm.simd = true;  // or false
+        // Optional: Disable threading to use lighter non-threaded loaders (reduces fetches)
+        // ort.env.wasm.numThreads = 1;
 
-        // Correct path to WASM loader
-        ort.env.wasm.wasmPaths = "/ort/";
+        // Optional: Explicitly disable JSEP if you don't need WebGPU/WebNN (avoids .jsep.mjs load)
+        // ort.env.allowJSEPSupport = false;  // Add if the error persists even with CDN
 
         const s = await ort.InferenceSession.create(modelUrl, {
           executionProviders: ["wasm"],
