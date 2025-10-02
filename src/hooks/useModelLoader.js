@@ -14,6 +14,12 @@ export default function useModelLoader(modelUrl) {
         setLoading(true);
         setError(null);
 
+        // Disable multi-threading to avoid loading the .jsep.mjs file
+        ort.env.wasm.numThreads = 1;
+
+        // Optional: Explicitly enable/disable SIMD (default is auto-detect; set false if you want to test without it)
+        // ort.env.wasm.simd = true;  // or false
+
         // Correct path to WASM loader
         ort.env.wasm.wasmPaths = "/ort/";
 
